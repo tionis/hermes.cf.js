@@ -3,12 +3,17 @@
 	"scripts": {
 		"dev": "wrangler dev",
 		"deploy": "wrangler deploy --minify",
-		"cf-typegen": "wrangler types --env-interface CloudflareBindings"
+		"cf-typegen": "wrangler types --env-interface CloudflareBindings",
+		"register": "node src/register.js"
 	},
 	"dependencies": {
-		"hono": "^4.7.4"
+		"discord.js": "^14.18.0",
+		"dotenv": "^16.4.7",
+		"hono": "^4.7.4",
+		"mustache": "^4.2.0"
 	},
 	"devDependencies": {
+		"discord-api-types": "^0.37.119",
 		"@cloudflare/workers-types": "^4.20250313.0",
 		"wrangler": "^4.0.0"
 	}
