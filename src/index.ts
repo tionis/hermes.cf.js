@@ -1,11 +1,23 @@
 import { Hono, HonoRequest } from "hono";
-import { html, raw } from 'hono/html'
+import { html, raw } from "hono/html";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 
-import { APIInteraction, APIInteractionResponse, InteractionType, InteractionResponseType, MessageFlags } from "discord-api-types/v10";
+import {
+  APIApplicationCommandInteractionDataBasicOption,
+  APIApplicationCommandInteractionDataOption,
+  APIInteraction,
+  APIInteractionResponse,
+  APIUser,
+  InteractionResponseType,
+  InteractionType,
+  Locale,
+  MessageFlags,
+} from "discord-api-types/v10";
+
+import { DiceRoller, DiscordRollRenderer } from "dice-roller-parser";
 
 import { INVITE_COMMAND, ROLL_COMMAND } from "./commands";
-import { subtleCrypto, valueToUint8Array, concatUint8Arrays} from "./util";
+import { concatUint8Arrays, subtleCrypto, valueToUint8Array } from "./util";
 
 interface Env {
   DISCORD_TOKEN: string;
@@ -27,40 +39,39 @@ interface Env {
  * @returns Whether or not validation was successful
  */
 export async function verifyKey(
-	rawBody: Uint8Array | ArrayBuffer | Buffer | string,
-	signature: string,
-	timestamp: string,
-	clientPublicKey: string | CryptoKey,
+  rawBody: Uint8Array | ArrayBuffer | Buffer | string,
+  signature: string,
+  timestamp: string,
+  clientPublicKey: string | CryptoKey,
 ): Promise<boolean> {
-	try {
-		const timestampData = valueToUint8Array(timestamp);
-		const bodyData = valueToUint8Array(rawBody);
-		const message = concatUint8Arrays(timestampData, bodyData);
-		const publicKey =
-			typeof clientPublicKey === 'string'
-				? await subtleCrypto.importKey(
-						'raw',
-						valueToUint8Array(clientPublicKey, 'hex'),
-						{
-							name: 'ed25519',
-							namedCurve: 'ed25519',
-						},
-						false,
-						['verify'],
-					)
-				: clientPublicKey;
-		const isValid = await subtleCrypto.verify(
-			{
-				name: 'ed25519',
-			},
-			publicKey,
-			valueToUint8Array(signature, 'hex'),
-			message,
-		);
-		return isValid;
-	} catch (ex) {
-		return false;
-	}
+  try {
+    const timestampData = valueToUint8Array(timestamp);
+    const bodyData = valueToUint8Array(rawBody);
+    const message = concatUint8Arrays(timestampData, bodyData);
+    const publicKey = typeof clientPublicKey === "string"
+      ? await subtleCrypto.importKey(
+        "raw",
+        valueToUint8Array(clientPublicKey, "hex"),
+        {
+          name: "ed25519",
+          namedCurve: "ed25519",
+        },
+        false,
+        ["verify"],
+      )
+      : clientPublicKey;
+    const isValid = await subtleCrypto.verify(
+      {
+        name: "ed25519",
+      },
+      publicKey,
+      valueToUint8Array(signature, "hex"),
+      message,
+    );
+    return isValid;
+  } catch (ex) {
+    return false;
+  }
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -72,7 +83,7 @@ interface DiscordRequestValidation {
 
 async function verifyDiscordRequest(
   request: HonoRequest,
-  env: Env
+  env: Env,
 ): Promise<DiscordRequestValidation> {
   const signature = request.header("x-signature-ed25519");
   const timestamp = request.header("x-signature-timestamp");
@@ -100,10 +111,31 @@ app.get("/", (c) => {
   <body>
     <h1>Hermes</h1>
   </body>
-</html>`)
+</html>`);
 });
 
 // Add page to roll dice and save the result for some time
+
+function rollDiceForDiscord(
+  diceFormula: string,
+  locale: Locale,
+  _user: APIUser | undefined,
+): string {
+  const roller = new DiceRoller();
+  const result = roller.roll(diceFormula);
+  const renderer = new DiscordRollRenderer();
+  const textResult = renderer.render(result);
+  switch (locale) {
+    case "de":
+      return `Würfelergebnis für ${diceFormula}:\n${textResult}`;
+    case "es-ES":
+      return `Resultado del lanzamiento de dados para ${diceFormula}:\n${textResult}`;
+    case "fr":
+      return `Résultat du lancer de dés pour ${diceFormula}:\n${textResult}`;
+    default:
+      return `Dice roll result for ${diceFormula}:\n${textResult}`;
+  }
+}
 
 app.post("/discord/interactions", async (c) => {
   const validation = await verifyDiscordRequest(c.req, c.env);
@@ -117,24 +149,40 @@ app.post("/discord/interactions", async (c) => {
   if (event.type === InteractionType.ApplicationCommand) {
     switch (event.data.name.toLowerCase()) {
       case ROLL_COMMAND.name.toLowerCase(): {
-        return c.json({
-          type: InteractionResponseType.ChannelMessageWithSource,
-          data: {
-            content: "Placeholder",
-          },
-        } as APIInteractionResponse);
+        if ("options" in event.data) {
+          const diceFormula = event.data.options?.find(
+            (o) => o.name === "dice",
+          ) as APIApplicationCommandInteractionDataBasicOption;
+          return c.json({
+            type: InteractionResponseType.ChannelMessageWithSource,
+            data: {
+              content: rollDiceForDiscord(
+                diceFormula.value as string,
+                event.locale,
+                event.member?.user,
+              ), // Could also use guild locale here
+            },
+          } as APIInteractionResponse);
+        } else {
+          return c.json({
+            type: InteractionResponseType.ChannelMessageWithSource,
+            data: {
+              content: "No dice formula provided",
+            },
+          } as APIInteractionResponse);
+        }
       }
       case INVITE_COMMAND.name.toLowerCase(): {
         const applicationId = c.env.DISCORD_APPLICATION_ID;
         const INVITE_URL =
           `https://discord.com/oauth2/authorize?client_id=${applicationId}&scope=applications.commands`;
-          return c.json({
-            type: InteractionResponseType.ChannelMessageWithSource,
-            data: {
-              content: INVITE_URL,
-              flags: MessageFlags.Ephemeral
-            },
-          })
+        return c.json({
+          type: InteractionResponseType.ChannelMessageWithSource,
+          data: {
+            content: INVITE_URL,
+            flags: MessageFlags.Ephemeral,
+          },
+        });
       }
       default:
         return c.json({ error: "Unknown Command" }, { status: 400 });
@@ -155,7 +203,8 @@ app.post("/discord/commands/register", async (c) => {
    * Register all commands globally.  This can take o(minutes), so wait until
    * you're sure these are the commands you want.
    */
-  const url = `https://discord.com/api/v10/applications/${c.env.DISCORD_APPLICATION_ID}/commands`;
+  const url =
+    `https://discord.com/api/v10/applications/${c.env.DISCORD_APPLICATION_ID}/commands`;
 
   const response = await fetch(url, {
     headers: {
@@ -172,8 +221,8 @@ app.post("/discord/commands/register", async (c) => {
       {
         message: "Commands registered",
         data,
-      }
-    )
+      },
+    );
   } else {
     try {
       const data = await response.text();
@@ -181,7 +230,7 @@ app.post("/discord/commands/register", async (c) => {
         message: "Error registering commands",
         status: response.status,
         statusText: response.statusText,
-        data: data
+        data: data,
       }, response.status as ContentfulStatusCode);
     } catch (e) {
       return c.json({
@@ -194,3 +243,4 @@ app.post("/discord/commands/register", async (c) => {
 });
 
 export default app;
+

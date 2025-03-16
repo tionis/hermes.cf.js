@@ -2,14 +2,15 @@
 	"name": "hermes",
 	"scripts": {
 		"dev": "wrangler dev",
-		"deploy": "wrangler deploy --minify",
-		"cf-typegen": "wrangler types --env-interface CloudflareBindings"
+		"deploy": "wrangler deploy --minify"
 	},
 	"dependencies": {
+		"dice-roller-parser": "^0.1.8",
 		"hono": "^4.7.4",
 		"mustache": "^4.2.0"
 	},
 	"devDependencies": {
+		"@types/node": "^22.13.10",
 		"discord-api-types": "^0.37.119",
 		"wrangler": "^4.0.0"
 	}
