@@ -1,16 +1,67 @@
 import { Hono, HonoRequest } from "hono";
 import { html, raw } from 'hono/html'
-import { APIInteraction, APIInteractionResponse, InteractionType, InteractionResponseType, MessageFlags } from "discord-api-types/v10";
-import { verifyKey } from "discord-interactions";
-import { INVITE_COMMAND, ROLL_COMMAND } from "./commands";
 import { ContentfulStatusCode } from "hono/utils/http-status";
+
+import { APIInteraction, APIInteractionResponse, InteractionType, InteractionResponseType, MessageFlags } from "discord-api-types/v10";
+
+import { INVITE_COMMAND, ROLL_COMMAND } from "./commands";
+import { subtleCrypto, valueToUint8Array, concatUint8Arrays} from "./util";
 
 interface Env {
   DISCORD_TOKEN: string;
   DISCORD_PUBLIC_KEY: string;
   DISCORD_APPLICATION_ID: string;
+  KV: KVNamespace;
+  R2: R2Bucket;
+  DB: D1Database;
+  ASSETS: Fetcher;
 }
 
+/**
+ * Validates a payload from Discord against its signature and key.
+ *
+ * @param rawBody - The raw payload data
+ * @param signature - The signature from the `X-Signature-Ed25519` header
+ * @param timestamp - The timestamp from the `X-Signature-Timestamp` header
+ * @param clientPublicKey - The public key from the Discord developer dashboard
+ * @returns Whether or not validation was successful
+ */
+export async function verifyKey(
+	rawBody: Uint8Array | ArrayBuffer | Buffer | string,
+	signature: string,
+	timestamp: string,
+	clientPublicKey: string | CryptoKey,
+): Promise<boolean> {
+	try {
+		const timestampData = valueToUint8Array(timestamp);
+		const bodyData = valueToUint8Array(rawBody);
+		const message = concatUint8Arrays(timestampData, bodyData);
+		const publicKey =
+			typeof clientPublicKey === 'string'
+				? await subtleCrypto.importKey(
+						'raw',
+						valueToUint8Array(clientPublicKey, 'hex'),
+						{
+							name: 'ed25519',
+							namedCurve: 'ed25519',
+						},
+						false,
+						['verify'],
+					)
+				: clientPublicKey;
+		const isValid = await subtleCrypto.verify(
+			{
+				name: 'ed25519',
+			},
+			publicKey,
+			valueToUint8Array(signature, 'hex'),
+			message,
+		);
+		return isValid;
+	} catch (ex) {
+		return false;
+	}
+}
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -71,7 +122,7 @@ app.post("/discord/interactions", async (c) => {
           data: {
             content: "Placeholder",
           },
-        });
+        } as APIInteractionResponse);
       }
       case INVITE_COMMAND.name.toLowerCase(): {
         const applicationId = c.env.DISCORD_APPLICATION_ID;
