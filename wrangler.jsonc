@@ -13,27 +13,27 @@
 	"assets": {
 		"directory": "assets",
 		"binding": "ASSETS",
-		"run_worker_first": true // Serve assets directly instead of invoking the worker
+		"run_worker_first": false // Serve assets directly instead of invoking the worker
 	},
 	"kv_namespaces": [
 		{
 			"binding": "KV",
 			"id": "8b17389180574e69b53c1649e79786a6"
 		}
-	],
-	"r2_buckets": [
-		{
-			"binding": "R2",
-			"bucket_name": "hermes"
-		}
-	],
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_id": "10517f48-7e21-4057-8445-a2eb1c727380",
-			"database_name": "hermes"
-		}
 	]
+	// "r2_buckets": [
+	// 	{
+	// 		"binding": "R2",
+	// 		"bucket_name": "hermes"
+	// 	}
+	// ],
+	// "d1_databases": [
+	// 	{
+	// 		"binding": "DB",
+	// 		"database_id": "10517f48-7e21-4057-8445-a2eb1c727380",
+	// 		"database_name": "hermes"
+	// 	}
+	// ]
 	// "durable_objects": {
 	//   "bindings": [
 	//     {
